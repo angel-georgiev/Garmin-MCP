@@ -54,6 +54,8 @@ class Settings:
     is_cn: bool
     max_response_chars: int
     download_dir: Path
+    auth_passphrase: str | None
+    public_url: str | None
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -64,6 +66,8 @@ class Settings:
         download_dir = Path(
             os.getenv("GARMIN_MCP_DOWNLOAD_DIR") or DEFAULT_DOWNLOAD_DIR
         ).expanduser()
+        passphrase = os.getenv("GARMIN_MCP_AUTH_PASSPHRASE")
+        public_url = os.getenv("GARMIN_MCP_PUBLIC_URL")
         return cls(
             email=email.strip() if email else None,
             password=password if password else None,
@@ -71,7 +75,18 @@ class Settings:
             is_cn=_env_flag("GARMIN_IS_CN"),
             max_response_chars=_env_int("GARMIN_MCP_MAX_CHARS", DEFAULT_MAX_CHARS),
             download_dir=download_dir,
+            auth_passphrase=passphrase or None,
+            public_url=public_url.rstrip("/") if public_url else None,
         )
+
+    @property
+    def oauth_enabled(self) -> bool:
+        """OAuth turns on only when both halves are configured."""
+        return bool(self.auth_passphrase and self.public_url)
+
+    @property
+    def oauth_state_file(self) -> Path:
+        return self.tokenstore / "oauth_state.json"
 
     @property
     def has_credentials(self) -> bool:

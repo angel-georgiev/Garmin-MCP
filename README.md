@@ -66,37 +66,73 @@ to last month"*, or *"what's my training readiness today and why is it low?"*.
 ## Use it as a Claude connector (remote MCP)
 
 Local stdio only reaches Claude Code and Claude Desktop. To use it from claude.ai or the
-mobile app you need a **custom connector**, which requires a public HTTPS URL that
-Anthropic's servers can reach — `localhost` is not accepted.
+mobile app you need a **custom connector**: a public HTTPS URL that Anthropic's servers can
+reach, with OAuth so the connector's "Individual sign-in" has something to sign in to.
 
-The catch: **don't deploy this to a VPS or cloud host.** Garmin's login refuses datacenter
-IPs (see [Troubleshooting](#troubleshooting)), so a hosted copy can't sign in at all. Run
-it on your own machine and expose that through a tunnel, so the traffic to Garmin leaves
-from your home connection:
+**Don't deploy this to a VPS or cloud host.** Garmin's login refuses datacenter IPs (see
+[Troubleshooting](#troubleshooting)), so a hosted copy can never sign in to Garmin. Run it
+on your own machine and expose that through a tunnel, so traffic to Garmin leaves from your
+home connection.
+
+### 1. Pick a connector passphrase
+
+This is what you'll type when Claude sends you to sign in. It is **not** your Garmin
+password — it's a new secret, and it's the only thing standing between a public URL and
+your health data. Minimum 12 characters; the server refuses anything shorter.
 
 ```bash
-garmin-mcp login                      # once, so tokens are cached
-garmin-mcp serve --transport streamable-http --port 8000 --path /mcp-$(openssl rand -hex 8)
-cloudflared tunnel --url http://127.0.0.1:8000    # in a second terminal
+openssl rand -base64 24     # a reasonable passphrase
 ```
 
-`cloudflared` prints a `https://<random>.trycloudflare.com` hostname. The connector URL is
-that hostname plus the path you generated:
+### 2. Start the tunnel to learn your public URL
 
+```bash
+cloudflared tunnel --url http://127.0.0.1:8000
 ```
-https://<random>.trycloudflare.com/mcp-<your-random-hex>
+
+It prints something like `https://tidy-otter-lake.trycloudflare.com`. The server needs to
+know this URL up front — OAuth issuers must match the address clients actually use.
+
+### 3. Start the server with OAuth on
+
+```bash
+garmin-mcp login                     # once, so Garmin tokens are cached
+
+export GARMIN_MCP_AUTH_PASSPHRASE='the passphrase from step 1'
+export GARMIN_MCP_PUBLIC_URL='https://tidy-otter-lake.trycloudflare.com'
+garmin-mcp serve --transport streamable-http --port 8000
 ```
 
-Paste it into **Settings → Connectors → Add custom connector** on claude.ai. Leave the
-OAuth fields empty — this server doesn't implement OAuth.
+It logs `OAuth enabled; issuer https://…` on startup. If only one of the two variables is
+set the server refuses to start rather than quietly serving your data to the public.
 
-<!-- markdownlint-disable-next-line -->
-> **This endpoint is unauthenticated.** Anyone who learns the URL can read every health
-> metric in your Garmin account. The random path makes it hard to guess, but that is
-> obscurity, not security — a proxy or tunnel log leaks it permanently. Treat the URL as a
-> password, prefer a tunnel that enforces its own access control, and tear the tunnel down
-> when you're not using it. Both the server and the tunnel must stay running for the
-> connector to work, so this doesn't survive closing your laptop.
+### 4. Fill in the connector dialog
+
+On claude.ai, **Settings → Connectors → Add custom connector**:
+
+| Field | Value |
+| --- | --- |
+| **Name** | Garmin |
+| **Remote MCP server URL** | `https://tidy-otter-lake.trycloudflare.com/mcp` |
+| **OAuth Client ID** | leave empty — Claude registers itself automatically |
+| **OAuth Client Secret** | leave empty — same reason |
+| **Individual sign-in** | leave on |
+
+Click **Add**, then **Connect**. Claude opens the sign-in page, you enter the passphrase,
+and you're connected. Five wrong attempts locks sign-in for five minutes.
+
+### What the OAuth layer does and doesn't do
+
+Access tokens last an hour, refresh tokens 30 days and rotate on every use; a used
+authorization code can't be replayed, and tokens survive a server restart (they're cached
+`0600` in the token store) so a dropped tunnel doesn't force you to re-add the connector.
+Revoke everything by deleting `oauth_state.json` from the token store, or by changing the
+passphrase.
+
+What it isn't: multi-user. There are no accounts, no per-user data separation, and no
+consent screen beyond the passphrase — anyone who knows the passphrase and the URL gets the
+same full read access you do. The server and tunnel must both stay running, so a closed
+laptop means a dead connector.
 
 ## Tools
 

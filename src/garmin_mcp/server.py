@@ -41,11 +41,52 @@ Guidance:
 SETTINGS = Settings.from_env()
 SESSION = GarminSession(SETTINGS)
 
-mcp = _ServerClass(
-    name="garmin",
-    version=__version__,
-    instructions=INSTRUCTIONS,
-)
+
+def _build_server() -> tuple[Any, Any]:
+    """Build the MCP server, with OAuth in front of it when configured.
+
+    Without a passphrase and public URL the server is stdio-shaped: local,
+    single-client, no auth needed. With both set it becomes a connector-shaped
+    server and every request must carry a bearer token.
+    """
+    if not SETTINGS.oauth_enabled:
+        return _ServerClass(name="garmin", version=__version__, instructions=INSTRUCTIONS), None
+
+    from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
+
+    from .auth import SCOPE, SingleUserOAuthProvider
+
+    provider = SingleUserOAuthProvider(
+        passphrase=SETTINGS.auth_passphrase or "",
+        base_url=SETTINGS.public_url or "",
+        storage=SETTINGS.oauth_state_file,
+    )
+    server = _ServerClass(
+        name="garmin",
+        version=__version__,
+        instructions=INSTRUCTIONS,
+        auth_server_provider=provider,
+        auth=AuthSettings(
+            issuer_url=SETTINGS.public_url,
+            resource_server_url=SETTINGS.public_url,
+            client_registration_options=ClientRegistrationOptions(
+                enabled=True,
+                valid_scopes=[SCOPE],
+                default_scopes=[SCOPE],
+            ),
+            revocation_options=RevocationOptions(enabled=True),
+            required_scopes=[SCOPE],
+        ),
+    )
+    return server, provider
+
+
+mcp, OAUTH_PROVIDER = _build_server()
+
+if OAUTH_PROVIDER is not None:
+    from .auth import register_login_route
+
+    register_login_route(mcp, OAUTH_PROVIDER)
 
 # Heavy per-second time series stripped from sleep responses unless asked for.
 SLEEP_DETAIL_KEYS = {

@@ -86,15 +86,51 @@ def cmd_logout(args: argparse.Namespace) -> int:
 
 def cmd_serve(args: argparse.Namespace) -> int:
     """Run the MCP server (stdio by default)."""
-    from .server import run
+    settings = Settings.from_env()
 
-    if args.transport != "stdio" and args.host not in {"127.0.0.1", "localhost", "::1"}:
+    # Half-configured OAuth is the dangerous case: the operator believes the
+    # server is protected while it is serving health data to anyone. Refuse.
+    if settings.auth_passphrase and not settings.public_url:
         print(
-            f"Warning: binding to {args.host} exposes every health metric in this Garmin "
-            "account to anyone who can reach the port, with no authentication. Prefer "
-            "binding to 127.0.0.1 and putting an authenticated tunnel in front.",
+            "GARMIN_MCP_AUTH_PASSPHRASE is set but GARMIN_MCP_PUBLIC_URL is not. OAuth "
+            "needs the public HTTPS URL clients will reach (it becomes the OAuth issuer). "
+            "Set it to your tunnel URL, e.g. https://example.trycloudflare.com",
             file=sys.stderr,
         )
+        return 2
+    if settings.public_url and not settings.auth_passphrase:
+        print(
+            "GARMIN_MCP_PUBLIC_URL is set but GARMIN_MCP_AUTH_PASSPHRASE is not, so the "
+            "server would be publicly readable without a sign-in. Set a long, unique "
+            "passphrase (not your Garmin password) to enable OAuth.",
+            file=sys.stderr,
+        )
+        return 2
+    # Plain http is allowed on loopback only — that's for testing the flow
+    # locally, the same exemption OAuth makes for native apps.
+    loopback = settings.public_url and settings.public_url.startswith(
+        ("http://127.0.0.1", "http://localhost", "http://[::1]")
+    )
+    if settings.oauth_enabled and not settings.public_url.startswith("https://") and not loopback:
+        print(
+            f"GARMIN_MCP_PUBLIC_URL must be https:// for a connector (got {settings.public_url}). "
+            "Only loopback addresses may use http, for local testing.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.transport != "stdio":
+        if settings.oauth_enabled:
+            print(f"OAuth enabled; issuer {settings.public_url}", file=sys.stderr)
+        elif args.host not in {"127.0.0.1", "localhost", "::1"}:
+            print(
+                f"Warning: binding to {args.host} exposes every health metric in this Garmin "
+                "account to anyone who can reach the port, with no authentication. Set "
+                "GARMIN_MCP_AUTH_PASSPHRASE and GARMIN_MCP_PUBLIC_URL to require a sign-in.",
+                file=sys.stderr,
+            )
+
+    from .server import run
 
     run(transport=args.transport, host=args.host, port=args.port, path=args.path)
     return 0
