@@ -108,6 +108,11 @@ environment variables always win.
 
 ## Troubleshooting
 
+- **Run it on your own machine, not a cloud VM.** Garmin fronts its login with Cloudflare
+  and rate limits by IP. From a datacenter address the login fails before it ever checks
+  your password — `429 IP rate limited` on the mobile endpoint, `403 Cloudflare bot
+  challenge` on the portal endpoint. Residential connections are fine; CI runners, cloud
+  dev containers and VPS hosts generally are not.
 - **"MFA code required"** — the server cannot prompt. Run `garmin-mcp login` in a terminal.
 - **429 / rate limited** — Garmin throttles aggressively and repeated logins can lock an
   account temporarily. Wait several minutes; don't loop retries.
@@ -124,6 +129,17 @@ ruff check .
 ```
 
 Tests drive the tools against a fake Garmin client, so the suite runs offline.
+
+To check the whole thing against your real account once you're signed in:
+
+```bash
+python scripts/live_check.py
+```
+
+It starts the server over stdio like a real client, calls every tool, drills into your
+most recent activity, and prints a pass/fail line per call. `--skip-download` avoids
+writing a GPX file; `--preview 0` hides the payload previews if you don't want your data
+on screen.
 
 ## Privacy
 
