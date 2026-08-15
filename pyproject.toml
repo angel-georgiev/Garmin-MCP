@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "garmin-mcp"
+version = "0.1.0"
+description = "MCP server exposing your Garmin Connect health, activity and training data"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+authors = [{ name = "angel-georgiev" }]
+keywords = ["garmin", "garmin-connect", "mcp", "model-context-protocol", "health", "fitness"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "garminconnect>=0.3.10",
+    "mcp>=1.9",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+garmin-mcp = "garmin_mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/angel-georgiev/Garmin-MCP"
+Issues = "https://github.com/angel-georgiev/Garmin-MCP/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/garmin_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
