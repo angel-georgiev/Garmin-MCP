@@ -785,14 +785,30 @@ async def garmin_api_get(path: str, params: dict[str, Any] | None = None) -> str
     return _text(await SESSION.call(lambda c: c.connectapi(cleaned, **kwargs)))
 
 
-def run(transport: str = "stdio") -> None:
-    """Start the MCP server."""
+def run(
+    transport: str = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    path: str = "/mcp",
+) -> None:
+    """Start the MCP server.
+
+    ``host``/``port``/``path`` apply only to the HTTP transports. Binding stays
+    on loopback by default: exposing this server means exposing every health
+    metric in the account, so putting a tunnel or reverse proxy in front should
+    be a deliberate act, not the default.
+    """
     logging.basicConfig(
         level=logging.INFO,
         stream=sys.stderr,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-    mcp.run(transport=transport)
+    if transport == "stdio":
+        mcp.run(transport="stdio")
+    elif transport == "streamable-http":
+        mcp.run(transport=transport, host=host, port=port, streamable_http_path=path)
+    else:
+        mcp.run(transport=transport, host=host, port=port)
 
 
 if __name__ == "__main__":  # pragma: no cover

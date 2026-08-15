@@ -88,7 +88,15 @@ def cmd_serve(args: argparse.Namespace) -> int:
     """Run the MCP server (stdio by default)."""
     from .server import run
 
-    run(transport=args.transport)
+    if args.transport != "stdio" and args.host not in {"127.0.0.1", "localhost", "::1"}:
+        print(
+            f"Warning: binding to {args.host} exposes every health metric in this Garmin "
+            "account to anyone who can reach the port, with no authentication. Prefer "
+            "binding to 127.0.0.1 and putting an authenticated tunnel in front.",
+            file=sys.stderr,
+        )
+
+    run(transport=args.transport, host=args.host, port=args.port, path=args.path)
     return 0
 
 
@@ -106,6 +114,25 @@ def build_parser() -> argparse.ArgumentParser:
         default="stdio",
         choices=["stdio", "sse", "streamable-http"],
         help="MCP transport to expose (default: stdio)",
+    )
+    serve.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="bind address for the HTTP transports (default: 127.0.0.1)",
+    )
+    serve.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="port for the HTTP transports (default: 8000)",
+    )
+    serve.add_argument(
+        "--path",
+        default="/mcp",
+        help=(
+            "URL path for streamable-http (default: /mcp). Use an unguessable path when "
+            "exposing the server through a public tunnel"
+        ),
     )
     serve.set_defaults(func=cmd_serve)
 

@@ -63,6 +63,41 @@ Use absolute paths: MCP clients do not inherit your shell's `PATH` or working di
 Then ask things like *"how did I sleep last week?"*, *"compare my running pace this month
 to last month"*, or *"what's my training readiness today and why is it low?"*.
 
+## Use it as a Claude connector (remote MCP)
+
+Local stdio only reaches Claude Code and Claude Desktop. To use it from claude.ai or the
+mobile app you need a **custom connector**, which requires a public HTTPS URL that
+Anthropic's servers can reach — `localhost` is not accepted.
+
+The catch: **don't deploy this to a VPS or cloud host.** Garmin's login refuses datacenter
+IPs (see [Troubleshooting](#troubleshooting)), so a hosted copy can't sign in at all. Run
+it on your own machine and expose that through a tunnel, so the traffic to Garmin leaves
+from your home connection:
+
+```bash
+garmin-mcp login                      # once, so tokens are cached
+garmin-mcp serve --transport streamable-http --port 8000 --path /mcp-$(openssl rand -hex 8)
+cloudflared tunnel --url http://127.0.0.1:8000    # in a second terminal
+```
+
+`cloudflared` prints a `https://<random>.trycloudflare.com` hostname. The connector URL is
+that hostname plus the path you generated:
+
+```
+https://<random>.trycloudflare.com/mcp-<your-random-hex>
+```
+
+Paste it into **Settings → Connectors → Add custom connector** on claude.ai. Leave the
+OAuth fields empty — this server doesn't implement OAuth.
+
+<!-- markdownlint-disable-next-line -->
+> **This endpoint is unauthenticated.** Anyone who learns the URL can read every health
+> metric in your Garmin account. The random path makes it hard to guess, but that is
+> obscurity, not security — a proxy or tunnel log leaks it permanently. Treat the URL as a
+> password, prefer a tunnel that enforces its own access control, and tear the tunnel down
+> when you're not using it. Both the server and the tunnel must stay running for the
+> connector to work, so this doesn't survive closing your laptop.
+
 ## Tools
 
 | Area | Tools |
